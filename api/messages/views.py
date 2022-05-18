@@ -1,19 +1,24 @@
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-
-from api.generics import NoCacheListCreateAPIView
+from api.generics import NoCacheListCreateAPIView, NoCacheRetrieveUpdateDeleteAPIView
+from api.messages.filters import MessageFilterSet
 from api.messages.serializers import MessageListSerializer
-from api.mixins import CustomerMixin
-from db.customer.models import Message, User
-from tools.query import get_object_or_404_with_message
+from api.mixins import CustomerMixin, RequestArgMixin
+from db.customer.models import Message
+from tools import IsAuthenticatedOrOptions
 
 
 class MessageList(NoCacheListCreateAPIView, CustomerMixin):
-    permission_classes = (IsAuthenticatedOrReadOnly,)
+    permission_classes = (IsAuthenticatedOrOptions,)
     serializer_class = MessageListSerializer
-
-    def get_recipient(self):
-        return get_object_or_404_with_message("Recipient with such user_id doesn't exist.")(self.qs(User),
-                                                                                            user_id=self.kwargs['user_id'])
+    filter_class = MessageFilterSet
 
     def get_queryset(self):
-        return self.qs(Message).filter(sender=self.user.pk, recipient=self.get_recipient().pk)
+        return self.qs(Message).filter(created_by_id=self.user.pk)
+
+
+class MessageDetail(NoCacheRetrieveUpdateDeleteAPIView, CustomerMixin):
+    permission_classes = (IsAuthenticatedOrOptions,)
+    serializer_class = MessageListSerializer
+    filter_class = MessageFilterSet
+
+    def get_queryset(self):
+        return self.qs(Message).filter(created_by_id=self.user.pk)

@@ -1,12 +1,16 @@
 from rest_framework import exceptions, views
 
+from django.contrib.auth.models import User as UserAuth
+
 from api.generics import NoCacheListCreateAPIView, NoCacheRetrieveUpdateAPIView
 from api.mixins import RequestArgMixin, ManageUISimpleSearchMixin, PermissionMixin
 from api.pagination import CustomPaginationWithSinglePage
 from api.users.exceptions import ForbiddenRole
+from api.users.filters import UsersFilterSet
 from api.users.serializers import UsersListSerializer, UsersDetailSerializer
 from db.customer.models import User, Roles
 from tools import IsAuthenticatedAndAuthorized, CanAlterUsers
+from tools.cors.decorators import allow_cors_methods, allow_cors
 
 
 class AlterUserView(views.APIView, PermissionMixin):
@@ -17,6 +21,10 @@ class UsersList(ManageUISimpleSearchMixin, NoCacheListCreateAPIView, PermissionM
     permission_classes = (IsAuthenticatedAndAuthorized,)
     serializer_class = UsersListSerializer
     pagination_class = CustomPaginationWithSinglePage
+    filter_class = UsersFilterSet
+    cors_methods = ['POST', 'GET', 'OPTIONS']
+
+    DEFAULT_NEW_PASSWORD = '123456789'
 
     user_security_attributes = ('security.marketingadmin', 'security.crmadmin')
 
@@ -50,7 +58,15 @@ class UsersList(ManageUISimpleSearchMixin, NoCacheListCreateAPIView, PermissionM
         except Roles.DoesNotExist:
             raise exceptions.ValidationError({"default_role": "Role does not exist."})
 
+        UserAuth.objects.create_user(f"{request.data['user_name']}@{self.customer_domain}", request.data['email'],
+                                     self.DEFAULT_NEW_PASSWORD)
+
         return super().create(request, args, kwargs)
+
+    @allow_cors('*')
+    @allow_cors_methods(cors_methods)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         queryset = self.qs(User).exclude(status=0).only(

@@ -2,6 +2,8 @@ from django.core.validators import EmailValidator
 from rest_framework import serializers, relations, exceptions
 from rest_framework.validators import UniqueValidator
 
+from django.contrib.auth.models import User as UserAuth
+
 from db import get_customer_domain_from_request
 from db.customer.models import User, Roles, UserRole
 
@@ -45,6 +47,8 @@ class UsersListSerializer(BaseUsersSerializer):
             )
         else:
             user_instance = super(UsersListSerializer, self).create(validated_data)
+
+
 
         return user_instance
 

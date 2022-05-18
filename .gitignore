@@ -140,3 +140,5 @@ GitHub.sublime-settings
 /.idea
 db.sqlite3_controller
 db.sqlite3_customer
+
+**/migrations/

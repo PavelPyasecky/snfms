@@ -13,6 +13,7 @@ class User(SchemaModel):
     )
 
     user_id = models.AutoField(db_column='UserID', primary_key=True)
+    customer_id = models.IntegerField(db_column='CustomerID', blank=True, null=True)
     user_name = models.CharField(db_column='UserName', max_length=50, blank=True, unique=True)
     name = models.CharField(db_column='Name', max_length=50, default='')
     first_name = models.CharField(db_column='FirstName', max_length=50, blank=True)
@@ -40,7 +41,7 @@ class User(SchemaModel):
     hashed_key = models.BinaryField(db_column='HashedKey', blank=True, null=True)
     password_size = models.IntegerField(db_column='PasswordSize', blank=True, null=True)
     profile_picture = models.URLField(db_column='ProfilePicture', blank=True, null=True, default='')
-    # roles = models.ManyToManyField(to='Roles', through='UserRole')
+    roles = models.ManyToManyField(to='Roles', through='UserRole')
     cookie_consent = models.BooleanField(db_column='CookieConsent', default=False)
     cookie_consent_date = models.DateTimeField(db_column='CookieConsentDate', blank=True, null=True)
 

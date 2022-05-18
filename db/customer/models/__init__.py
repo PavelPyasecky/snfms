@@ -18,6 +18,7 @@ class UserRole(SchemaModel):
 
 
 class Roles(SchemaModel):
+    ADMIN_NAVIGATION = 'Admin Navigation'
     ADMIN_ROLE = 'Admin Role'
 
     role_id = models.AutoField(db_column='RoleID', primary_key=True)

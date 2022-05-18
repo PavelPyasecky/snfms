@@ -1,3 +1,10 @@
+import base64
+import binascii
+import re
+from hashlib import sha256
+from Crypto.Cipher import AES
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.hashers import make_password
@@ -11,6 +18,33 @@ def parse_user_name_and_domain_from_email_address(username: str) -> (str, str):
     if '@' not in username:
         raise UsernameNeedsAtSymbol
     return username.rsplit('@', 1)
+
+
+def decode_phrase(encoded_phrase: str) -> bytes:
+    try:
+        return base64.b64decode(encoded_phrase)
+    except binascii.Error:
+        raise UnacceptablePassphrase
+
+
+def encode_phrase(phrase: str) -> bytes:
+    return phrase.encode()
+
+
+def create_hash(phrase: str) -> bytes:
+    return sha256(phrase.encode()).digest()
+
+
+def decrypt_password(password):
+    # TODO: Use sfdb.auth.utils.AESCrypt
+    #       Don't use static iv...
+    c = AES.new(settings.AES_PASSCODE, AES.MODE_CBC, settings.AES_IV)
+    try:
+        password = c.decrypt(base64.standard_b64decode(str(password))).decode('utf-8')
+    except (binascii.Error, ValueError):
+        raise UnacceptablePassphrase
+
+    return re.sub('[\x00-\x16]', '', password)  # This is not good.
 
 
 class UnacceptablePassphrase(Exception):
@@ -113,3 +147,22 @@ class SalesFusionBackend(ModelBackend):
             return model.objects.get(pk=user_id)
         except model.DoesNotExist:
             return
+
+
+class Frodo(SalesFusionBackend):
+
+    def _prepare_passphrase(self, original_password: str) -> bytes:
+        return create_hash(original_password)
+
+
+class Gandalf(SalesFusionBackend):
+
+    def _prepare_passphrase(self, original_password: str) -> bytes:
+        decrypted_password = decrypt_password(original_password)
+        return create_hash(decrypted_password)
+
+
+class Saruman(SalesFusionBackend):
+
+    def _prepare_passphrase(self, original_password: str) -> bytes:
+        return decode_phrase(decrypt_password(original_password))

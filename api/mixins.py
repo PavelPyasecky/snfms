@@ -1,13 +1,20 @@
 import json
 import operator
 import re
+from collections import OrderedDict
 from functools import reduce
+from http.client import responses
+from math import ceil
 
+from django.conf import settings
 from django.db.models import Q, QuerySet
+from querybuilder import query
 from rest_framework import serializers
+from rest_framework.response import Response
 
 from api import queryables, exceptions
 from api.decorators import stored_property, stored_method
+from api.utils import is_csv_request
 from db import get_customer_domain_from_request, get_user_info_from_request
 from db.controller.models import Customer
 from db.customer import models
@@ -228,3 +235,92 @@ class PermissionMixin(CustomerMixin):
             role__data_access=True,
             user_id=self.user.pk,
         ).exists()
+
+
+class LongListModelMixin:
+    """
+    This mixin is intended to overwrite "list" from rest_framework.mixins.ListModelMixin.
+    For use in conjunction with sfapi.pagination.SalesfusionPaginationWithSinglePage
+    to return the same structure response object with or without pagination.
+    """
+    def get_queryset_slices(self, queryset, limit, get_serializer=None):
+        """
+        Creates a generator for slicing a queryset up into chunks
+        Pass in get_serializer method to return serialized data
+        """
+        for offset in range(ceil(queryset.count() / limit)):
+            queryset_slice = queryset[offset * limit: offset * limit + limit]
+            if get_serializer:
+                queryset_slice = get_serializer(queryset_slice, many=True).data
+            for qs_slice in queryset_slice:
+                yield qs_slice
+
+    def get_csv_response(self, queryset):
+        """
+        CSVs are generated with no page_size and may take longer than 2 minutes
+        before we can return the response. This will cause nginx to kill the
+        connection. Therefore, slice the queryset and use a StreamingHttpResponse.
+        """
+        queryset = self.get_queryset_slices(
+            queryset,
+            settings.SQL_SERVER_PARAMETER_LIMIT,
+            self.get_serializer
+        )
+        response = responses.CSVStreamingHttpResponse(
+            [field for field, value in self.get_serializer().fields.items() if not value.write_only], queryset
+        )
+        response['Content-Disposition'] = 'attachment; filename="SugarMarket.csv"'
+
+        return response
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+
+        # This condition allows some custom views to return a list of dictionaries rather than an actual qs
+        if isinstance(queryset, QuerySet):
+            queryset = self.filter_queryset(queryset)
+
+        # CSVs are generated with no page_size and may take longer than 2 minutes
+        # before we can return the response. This will cause nginx to kill the
+        # connection. Therefore, slice the queryset and use a StreamingHttpResponse.
+        if is_csv_request(request):
+            return self.get_csv_response(queryset)
+
+        # SQL Server limits the amount of parameters sent per query. If we are using
+        # prefetch_related and the number of rows returned could exceed this limit, batch
+        # the queryset in slices.
+        page_size = self.paginator.get_page_size(request)
+        if ((not page_size or page_size > settings.SQL_SERVER_PARAMETER_LIMIT) and
+                getattr(queryset, '_prefetch_related_lookups', None)):
+            queryset = self.get_queryset_slices(queryset, settings.SQL_SERVER_PARAMETER_LIMIT)
+
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        if isinstance(queryset, query.Query):
+            queryset = queryset.select()
+
+        serializer = self.get_serializer(queryset, many=True)
+        count = len(serializer.data)
+        permissionless_count = getattr(self.paginator, 'permissionless_count', count)
+        return Response(OrderedDict([
+            ('count', count),
+            ('total_count', permissionless_count),
+            ('page_size', count),
+            ('page_number', self.get_page_number()),
+            ('next', self.get_next_link()),
+            ('previous', self.get_previous_link()),
+            ('results', serializer.data),
+        ]))
+
+    def get_previous_link(self):
+        return None
+
+    def get_next_link(self):
+        return None
+
+    def get_page_number(self):
+        return 1

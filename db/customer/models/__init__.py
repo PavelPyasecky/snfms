@@ -21,6 +21,9 @@ class Roles(SchemaModel):
     ADMIN_NAVIGATION = 'Admin Navigation'
     ADMIN_ROLE = 'Admin Role'
 
+    HAS_ACCESS_TRUE = 'True'
+    HAS_ACCESS_FALSE = 'False'
+
     role_id = models.AutoField(db_column='RoleID', primary_key=True)
     name = models.CharField(db_column='RoleName', max_length=50, blank=True)
     description = models.CharField(db_column='RoleDescription', max_length=500, blank=True)

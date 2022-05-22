@@ -1,3 +1,5 @@
+from django.db.models import Q
+
 from api.generics import NoCacheListCreateAPIView, NoCacheRetrieveUpdateDeleteAPIView
 from api.messages.filters import MessageFilterSet
 from api.messages.serializers import MessageListSerializer
@@ -12,7 +14,7 @@ class MessageList(NoCacheListCreateAPIView, CustomerMixin):
     filter_class = MessageFilterSet
 
     def get_queryset(self):
-        return self.qs(Message).filter(created_by_id=self.user.pk)
+        return self.qs(Message).filter(Q(created_by_id=self.user.pk) | Q(recipient_id=self.user.pk))
 
 
 class MessageDetail(NoCacheRetrieveUpdateDeleteAPIView, CustomerMixin):
